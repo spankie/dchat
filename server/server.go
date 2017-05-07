@@ -1,12 +1,11 @@
 package server
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"net"
 	"strconv"
-	"strings"
-	"time"
 )
 
 const (
@@ -15,7 +14,10 @@ const (
 )
 
 var (
-	IDs int
+	// IDs hold number for assigning IDs to clients
+	IDs         int
+	messageChan = make(chan string)
+	clientsConn []net.Conn
 )
 
 // Server is a structure for the server
@@ -32,6 +34,7 @@ func New() *Server {
 // Start starts the server and returns a listener
 func (s *Server) Start() chan int {
 	log.Println("Server started on ", s.ServePort)
+
 	// Start the server ...
 	server, err := net.Listen("tcp", fmt.Sprintf(":%s", s.ServePort))
 	if err != nil {
@@ -43,6 +46,7 @@ func (s *Server) Start() chan int {
 	channel := make(chan int)
 
 	// TODO:: implement spreading clients message to other clients
+
 	go func() {
 		for {
 			// Limit to four clients for now...
@@ -61,42 +65,47 @@ func (s *Server) Start() chan int {
 			IDs++
 			// Assign
 			clientID := IDs
-
+			clientsConn = append(clientsConn, conn)
 			log.Printf("connection %d accepted\n", clientID)
-			conn.Write([]byte(strconv.Itoa(clientID)))
+			conn.Write([]byte(strconv.Itoa(clientID) + "\n"))
 			go read(conn, clientID)
-			go write(conn, clientID)
 		}
 		channel <- 1
 	}()
-
+	go write()
 	return channel
 	// TODO:: Launch a go routine to handle incoming requests...
 }
 
 func read(c net.Conn, id int) {
-	bb := make([]byte, 8)
-	for {
-		// copy 8Bytes at a time
-		// _, err := io.Copy(os.Stdout, c)
-		_, err := c.Read(bb)
+	// check if the connection is closed with channels
+	// bb := make([]byte, 8)
+	buf := bufio.NewReader(c)
+	for c != nil {
+
+		message, _, err := buf.ReadLine()
 		if err != nil {
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				log.Println("Connection is closed.")
-				break
-			}
-			log.Println("could not copy message from client")
+			log.Println("Could not get message")
 			break
 		}
-		fmt.Printf("[%d] : %s\n", id, string(bb))
-		// log.Println("\nHi: ")
+		m := string(message)
+		m = fmt.Sprintf("[%d] > %s\n", id, m)
+		// fmt.Printf("[%d] : %s\n", id, string(message))
+		// fmt.Print(m)
+		messageChan <- m
 	}
+	log.Printf("Connection[%d] Is closed.\n", id)
 }
 
-func write(c net.Conn, id int) {
-	for {
-		c.Write([]byte(fmt.Sprintf("\nServer: Welcome client: %#v\n", id)))
-		time.Sleep(time.Second * 3)
+func write() {
+	// check if the connection is closed with channels
+	for message := range messageChan {
+		for _, c := range clientsConn {
+			// message = message + "\n"
+			// log.Println("m:", message)
+			c.Write([]byte(message))
+			// time.Sleep(time.Second * 3)
+		}
 		// break
 	}
 }
