@@ -21,7 +21,8 @@ func main() {
 	}
 
 	var bb = make([]byte, 32<<10)
-
+	// 32<<10 means multiply 32 by 2, 10 times.
+	
 	_, _ = conn.Read(bb)
 	myID = string(bb)
 	if err != nil {
